@@ -16,7 +16,7 @@ mod tests {
       nom::IResult::Done(_, f) => assert_eq!(f, 12345u32),
       _ => unreachable!(),
     }
-    
+
   }
 
   #[test]
@@ -125,8 +125,8 @@ named!(take_u32 <u32>,
 //                   map_res!(digit,
 //                            FromStr::from_str)));
 // named!(int_parse<u32>, map_res!(take_while_s!(is_digit), FromStr::from_str));
-named!(int_parse<&str, u32>, map_res!(digit, FromStr::from_str));
-named!(int_list<Vec<u32> >, separated_list!(char!(' '), int_parse));
+named!(int_parse<u32>, map_res!(digit, FromStr::from_str));
+named!(int_list<Vec<u32> >, separated_list!(tag_s!(" ".as_bytes()), int_parse));
 
 named!(extent_alloc <ExtentAllocation>,
   chain!(
