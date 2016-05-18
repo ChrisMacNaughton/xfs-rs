@@ -66,6 +66,50 @@ mod tests {
     }
 
     #[test]
+    fn it_parses_directory_operations() {
+        let example_output = b"dir 21253907 6921870 6969079 779205554";
+        match super::dir(example_output) {
+            nom::IResult::Done(_, result) => {
+                assert_eq!(result.lookups, 21253907);
+            }
+            _ => unreachable!(),
+        }
+    }
+
+    #[test]
+    fn it_parses_transactions() {
+        let example_output = b"trans 126946406 38184616 6342392";
+        match super::trans(example_output) {
+            nom::IResult::Done(_, result) => {
+                assert_eq!(result.waited, 126946406);
+            }
+            _ => unreachable!(),
+        }
+    }
+
+    #[test]
+    fn it_parses_inode_operations() {
+        let example_output = b"ig 17754368 2019571 102 15734797 0 15672217 3962470";
+        match super::ig(example_output) {
+            nom::IResult::Done(_, result) => {
+                assert_eq!(result.cache_lookups, 17754368);
+            }
+            _ => unreachable!(),
+        }
+    }
+
+    #[test]
+    fn it_parseslog_operations() {
+        let example_output = b"log 129491915 3992515264 458018 153771989 127040250";
+        match super::log(example_output) {
+            nom::IResult::Done(_, result) => {
+                assert_eq!(result.log_writes, 129491915);
+            }
+            _ => unreachable!(),
+        }
+    }
+
+    #[test]
     fn it_parses_example() {
         let example_output = b"extent_alloc 4260849 125170297 4618726 131131897
 abt 29491162 337391304 11257328 11133039
@@ -98,6 +142,11 @@ pub struct XfsStat {
     pub allocation_btree: AllocationBTree,
     pub block_mapping: BlockMapping,
     pub block_map_btree: BlockMapBTree,
+    pub directory_operations: DirectoryOperations,
+    pub transactions: Transactions,
+    pub inode_operations: InodeOperations,
+    pub log_operations: LogOperations,
+    pub tail_pushing_stats: TailPushingStats,
 }
 
 pub struct ExtentAllocation {
@@ -242,13 +291,28 @@ named!(xfs_stat <XfsStat>,
     newline ~
     blk_map: blk_map ~
     newline ~
-    block_map_btree: bmbt,
+    block_map_btree: bmbt ~
+    newline ~
+    directory_operations: dir ~
+    newline ~
+    transactions: trans ~
+    newline ~
+    inode_operations: ig ~
+    newline ~
+    log_operations: log ~
+    newline ~
+    tail_pushing_stats: push_ail,
     || {
       XfsStat {
         extent_allocation: extent_alloc,
         allocation_btree: abt,
         block_mapping: blk_map,
         block_map_btree: block_map_btree,
+        directory_operations: directory_operations,
+        transactions: transactions,
+        inode_operations: inode_operations,
+        log_operations:log_operations,
+        tail_pushing_stats: tail_pushing_stats,
       }
     }
   )
@@ -359,4 +423,141 @@ named!(bmbt <BlockMapBTree>,
       }
     }
   )
+);
+
+named!(dir <DirectoryOperations>,
+    chain!(
+        tag!("dir") ~
+        space ~
+        lookups: take_u32 ~
+        space ~
+        creates: take_u32 ~
+        space ~
+        removes: take_u32 ~
+        space ~
+        get_dents: take_u32,
+        || {
+            DirectoryOperations {
+                lookups: lookups,
+                creates: creates,
+                removes: removes,
+                get_dents: get_dents,
+            }
+        }
+    )
+);
+
+named!(trans <Transactions>,
+  chain!(
+    tag!("trans") ~
+    space ~
+    waited: take_u32 ~
+    space ~
+    async: take_u32 ~
+    space ~
+    empty: take_u32,
+    ||{
+      Transactions {
+        waited: waited,
+        async: async,
+        empty: empty,
+      }
+    }
+  )
+);
+
+named!(ig <InodeOperations>,
+  chain!(
+    tag!("ig") ~
+    space ~
+    cache_lookups: take_u32 ~
+    space ~
+    cache_hits: take_u32 ~
+    space ~
+    cache_recycle: take_u32 ~
+    space ~
+    cache_missed: take_u32 ~
+    space ~
+    cache_dup: take_u32 ~
+    space ~
+    cache_reclaime: take_u32 ~
+    space ~
+    inode_attr_changes: take_u32,
+    || {
+      InodeOperations {
+        cache_lookups: cache_lookups,
+        cache_hits: cache_hits,
+        cache_recycle: cache_recycle,
+        cache_missed: cache_missed,
+        cache_dup: cache_dup,
+        cache_reclaime: cache_reclaime,
+        inode_attr_changes: inode_attr_changes,
+      }
+    }
+  )
+);
+
+named!(log <LogOperations>,
+  chain!(
+    tag!("log") ~
+    space ~
+    log_writes: take_u32 ~
+    space ~
+    log_blocks: take_u32 ~
+    space ~
+    noiclogs: take_u32 ~
+    space ~
+    log_forced: take_u32 ~
+    space ~
+    force_sleep: take_u32,
+    || {
+      LogOperations {
+          log_writes: log_writes,
+          log_blocks: log_blocks,
+          noiclogs: noiclogs,
+          log_forced: log_forced,
+          force_sleep: force_sleep,
+      }
+    }
+  )
+);
+
+named!(push_ail <TailPushingStats>,
+    chain!(
+        tag!("push_ail") ~
+        space ~
+        logspace: take_u32 ~
+        space ~
+        sleep_logspace: take_u32 ~
+        space ~
+        push_ails: take_u32 ~
+        space ~
+        push_ail_success: take_u32 ~
+        space ~
+        push_ail_pushbuf: take_u32 ~
+        space ~
+        push_ail_pinned: take_u32 ~
+        space ~
+        push_ail_locked: take_u32 ~
+        space ~
+        push_ail_flushing: take_u32 ~
+        space ~
+        push_ail_restarts: take_u32 ~
+        space ~
+        push_ail_flush: take_u32,
+        || {
+            TailPushingStats {
+                logspace: logspace,
+                sleep_logspace: sleep_logspace,
+                push_ails: push_ails,
+                push_ail_success: push_ail_success,
+                push_ail_pushbuf: push_ail_pushbuf,
+                push_ail_pinned: push_ail_pinned,
+                push_ail_locked: push_ail_locked,
+                push_ail_flushing: push_ail_flushing,
+                push_ail_restarts: push_ail_restarts,
+                push_ail_flush: push_ail_flush,
+            }
+        }
+    )
 );
