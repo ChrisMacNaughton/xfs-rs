@@ -1,0 +1,6 @@
+[package]
+name = "xfs"
+version = "0.1.0"
+authors = ["Chris MacNaughton <chmacnaughton@gmail.com>"]
+
+[dependencies]
