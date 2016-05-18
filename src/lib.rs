@@ -43,6 +43,28 @@ mod tests {
   }
 
   #[test]
+  fn it_parses_block_mapping() {
+    let example_output = b"blk_map 381213360 115456141 10903633 69612322 7448401 507596777 0";
+    match super::blk_map(example_output) {
+      nom::IResult::Done(_, result) => {
+        assert_eq!(result.list_delete, 7448401);
+      },
+      _ => unreachable!(),
+    }
+  }
+
+  #[test]
+  fn it_parses_block_map_btree() {
+    let example_output = b"bmbt 771328 6236258 602114 86646";
+    match super::bmbt(example_output) {
+      nom::IResult::Done(_, result) => {
+        assert_eq!(result.deletes, 86646);
+      },
+      _ => unreachable!(),
+    }
+  }
+
+  #[test]
   fn it_parses_example() {
     let example_output = b"extent_alloc 4260849 125170297 4618726 131131897
 abt 29491162 337391304 11257328 11133039
@@ -65,25 +87,65 @@ debug 0";
 
     assert_eq!(result.extent_allocation.freed_extents, 4618726);
     assert_eq!(result.allocation_btree.lookups, 29491162);
+    assert_eq!(result.block_mapping.unmap, 10903633);
+    assert_eq!(result.block_map_btree.inserts, 602114);
   }
 }
 
 pub struct XfsStat {
-  extent_allocation: ExtentAllocation,
-  allocation_btree: AllocationBTree
+  pub extent_allocation: ExtentAllocation,
+  pub allocation_btree: AllocationBTree,
+  pub block_mapping: BlockMapping,
+  pub block_map_btree: BlockMapBTree
 }
 
 pub struct ExtentAllocation {
+  // Number of file system extents allocated over all XFS filesystems.
   pub allocated_extents: u32,
+  // Number of file system blocks allocated over all XFS filesystems.
   pub allocated_blocks: u32,
+  // Number of file system extents freed over all XFS filesystems.
   pub freed_extents: u32,
+  // Number of file system blocks freed over all XFS filesystems.
   pub freed_blocks: u32,
 }
 
 pub struct AllocationBTree {
+  // Number of lookup operations in XFS filesystem allocation btrees.
   pub lookups: u32,
+  // Number of compares in XFS filesystem allocation btree lookups.
   pub compares: u32,
+  // Number of extent records inserted into XFS filesystem allocation btrees.
   pub inserts: u32,
+  // Number of extent records deleted from XFS filesystem allocation btrees.
+  pub deletes: u32,
+}
+
+pub struct BlockMapping {
+  // Number of block map for read operations performed on XFS files.
+  pub map_read: u32,
+  // Number of block map for write operations performed on XFS files.
+  pub map_write: u32,
+  // Number of block unmap (delete) operations performed on XFS files.
+  pub unmap: u32,
+  // Number of extent list insertion operations for XFS files.
+  pub list_insert: u32,
+  // Number of extent list deletion operations for XFS files.
+  pub list_delete: u32,
+  // Number of extent list lookup operations for XFS files.
+  pub list_lookup: u32,
+  // Number of extent list comparisons in XFS extent list lookups.
+  pub list_compare: u32,
+}
+
+pub struct BlockMapBTree {
+  // Number of block map btree lookup operations on XFS files.
+  pub lookups: u32,
+  // Number of block map btree compare operations in XFS block map lookups.
+  pub compares: u32,
+  // Number of block map btree records inserted for XFS files.
+  pub inserts: u32,
+  // Number of block map btree records deleted for XFS files.
   pub deletes: u32,
 }
 
@@ -100,11 +162,17 @@ named!(xfs_stat <XfsStat>,
   chain!(
     extent_alloc: extent_alloc ~
     newline ~
-    abt: abt,
+    abt: abt ~
+    newline ~
+    blk_map: blk_map ~
+    newline ~
+    block_map_btree: bmbt,
     || {
       XfsStat {
         extent_allocation: extent_alloc,
         allocation_btree: abt,
+        block_mapping: blk_map,
+        block_map_btree: block_map_btree,
       }
     }
   )
@@ -159,6 +227,59 @@ named!(abt <AllocationBTree>,
         compares: compares,
         inserts: inserts,
         deletes: deletes,
+      }
+    }
+  )
+);
+
+named!(blk_map <BlockMapping>,
+  chain!(
+    tag!("blk_map") ~
+    space ~
+    map_read: take_u32 ~
+    space ~
+    map_write: take_u32 ~
+    space ~
+    unmap: take_u32 ~
+    space ~
+    list_insert: take_u32 ~
+    space ~
+    list_delete: take_u32 ~
+    space ~
+    list_lookup: take_u32 ~
+    space ~
+    list_compare: take_u32,
+    ||{
+      BlockMapping {
+        map_read: map_read,
+        map_write: map_write,
+        unmap: unmap,
+        list_insert: list_insert,
+        list_delete: list_delete,
+        list_lookup: list_lookup,
+        list_compare: list_compare,
+      }
+    }
+  )
+);
+
+named!(bmbt <BlockMapBTree>,
+  chain!(
+    tag!("bmbt") ~
+    space ~
+    lookup: take_u32 ~
+    space ~
+    compare: take_u32 ~
+    space ~
+    insrec: take_u32 ~
+    space ~
+    delrec: take_u32,
+    || {
+      BlockMapBTree {
+        lookups: lookup,
+        compares: compare,
+        inserts: insrec,
+        deletes: delrec,
       }
     }
   )
