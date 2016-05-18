@@ -6,3 +6,4 @@ description = "A Parser for XFS performance data"
 license = "MIT/Apache-2.0"
 
 [dependencies]
+nom = "~1.2"
