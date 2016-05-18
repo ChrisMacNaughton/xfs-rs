@@ -2,7 +2,7 @@
 
 use std::str::FromStr;
 
-use self::nom::{is_digit, space, newline};
+use self::nom::{is_digit, space, newline, digit};
 
 #[cfg(test)]
 mod tests {
@@ -120,23 +120,27 @@ named!(take_u32 <u32>,
   )
 );
 
+// named!(int_list<Vec<u32> >,
+//   separated_list!(char!(' '),
+//                   map_res!(digit,
+//                            FromStr::from_str)));
+// named!(int_parse<u32>, map_res!(take_while_s!(is_digit), FromStr::from_str));
+named!(int_parse<&str, u32>, map_res!(digit, FromStr::from_str));
+named!(int_list<Vec<u32> >, separated_list!(char!(' '), int_parse));
+
 named!(extent_alloc <ExtentAllocation>,
   chain!(
     tag!("extent_alloc") ~
-    space ~
-    allocx: take_u32 ~
-    space ~
-    allocb: take_u32 ~
-    space ~
-    freex: take_u32 ~
-    space ~
-    freeb: take_u32,
+    numbers: int_list,
     || {
+      if numbers.len() != 4 {
+        panic!("Incorrect length provided");
+      }
       ExtentAllocation {
-        allocated_extents: allocx,
-        allocated_blocks: allocb,
-        freed_extents: freex,
-        freed_blocks: freeb,
+        allocated_extents: numbers[0],
+        allocated_blocks: numbers[1],
+        freed_extents: numbers[2],
+        freed_blocks: numbers[3],
       }
     }
   )
