@@ -1,9 +1,10 @@
+#![recursion_limit="100"]
 #[macro_use]
 extern crate nom;
 
 use std::str::FromStr;
 
-use self::nom::{is_digit, space, newline};
+use self::nom::{le_u8, is_digit, space, newline};
 
 #[cfg(test)]
 mod tests {
@@ -164,6 +165,61 @@ mod tests {
     }
 
     #[test]
+    fn it_parses_inode_clustering() {
+        let example_output = b"icluster 20772185 2488203 13909520";
+        match super::icluster(example_output) {
+            nom::IResult::Done(_, result) => {
+                assert_eq!(result.count, 20772185);
+            }
+            _ => unreachable!(),
+        }
+    }
+
+    #[test]
+    fn it_parses_vnode_statistics() {
+        let example_output = b"vnodes 62578 15959666 0 0 15897088 15897088 15897088 0";
+        match super::vnodes(example_output) {
+            nom::IResult::Done(_, result) => {
+                assert_eq!(result.active, 62578);
+            }
+            _ => unreachable!(),
+        }
+    }
+
+    #[test]
+    fn it_parses_buf_statistics() {
+        let example_output = b"buf 2090581631 1972536890 118044776 225145 9486625 0 0 2000152616 809762";
+        match super::buf(example_output) {
+            nom::IResult::Done(_, result) => {
+                assert_eq!(result.get, 2090581631);
+            }
+            _ => unreachable!(),
+        }
+    }
+
+    #[test]
+    fn it_parses_extended_precision_counters() {
+        let example_output = b"xpc 6908312903680 67735504884757 19760115252482";
+        match super::xpc(example_output) {
+            nom::IResult::Done(_, result) => {
+                assert_eq!(result.xstrat_bytes, 6908312903680);
+            }
+            _ => unreachable!(),
+        }
+    }
+
+     #[test]
+    fn it_parses_debug() {
+        let example_output = b"debug 0";
+        match super::debug(example_output) {
+            nom::IResult::Done(_, result) => {
+                assert_eq!(result, false);
+            }
+            _ => unreachable!(),
+        }
+    }
+
+    #[test]
     fn it_parses_example() {
         let example_output = b"extent_alloc 4260849 125170297 4618726 131131897
 abt 29491162 337391304 11257328 11133039
@@ -188,6 +244,19 @@ debug 0";
         assert_eq!(result.allocation_btree.lookups, 29491162);
         assert_eq!(result.block_mapping.unmap, 10903633);
         assert_eq!(result.block_map_btree.inserts, 602114);
+        assert_eq!(result.directory_operations.get_dents, 779205554);
+        assert_eq!(result.transactions.empty, 6342392);
+        assert_eq!(result.inode_operations.inode_attr_changes, 3962470);
+        assert_eq!(result.log_operations.force_sleep, 127040250);
+        assert_eq!(result.tail_pushing_stats.push_ail_flush, 7337);
+        assert_eq!(result.io_map_write_convert.split, 0);
+        assert_eq!(result.read_write_stats.read, 1046884251);
+        assert_eq!(result.attribute_operations.list, 0);
+        assert_eq!(result.inode_clustering.flushinode, 13909520);
+        assert_eq!(result.vnode_statistics.free, 0);
+        assert_eq!(result.buf_statistics.get_read, 809762);
+        assert_eq!(result.extended_precision_counters.read_bytes, 19760115252482u64);
+        assert_eq!(result.debug, false);
     }
 }
 
@@ -204,6 +273,11 @@ pub struct XfsStat {
     pub io_map_write_convert: IoMapWriteConvert,
     pub read_write_stats: ReadWriteStats,
     pub attribute_operations: AttributeOperations,
+    pub inode_clustering: InodeClustering,
+    pub vnode_statistics: VnodeStatistics,
+    pub buf_statistics: BufStatistics,
+    pub extended_precision_counters: ExtendedPrecisionCounters,
+    pub debug: bool,
 }
 
 pub struct ExtentAllocation {
@@ -358,10 +432,65 @@ pub struct AttributeOperations {
     pub list: u32,
 }
 
+pub struct InodeClustering {
+    /// This is the number of calls to xfs_iflush which gets called when an inode is being flushed (such as by bdflush or tail pushing). xfs_iflush searches for other inodes in the same cluster which are dirty and flushable.
+    pub count: u32,
+    /// Value from xs_icluster_flushcnt field of struct xfsstats.
+    pub flushcnt: u32,
+    /// This is the number of times that the inode clustering was not able to flush anything but the one inode it was called with.
+    pub flushinode: u32,
+}
+
+pub struct VnodeStatistics {
+    /// Number of vnodes not on free lists.
+    pub active: u32,
+    /// Number of times vn_alloc called.
+    pub alloc: u32,
+    /// Number of times vn_get called.
+    pub get: u32,
+    /// Number of times vn_hold called.
+    pub hold: u32,
+    /// Number of times vn_rele called.
+    pub rele: u32,
+    /// Number of times vn_reclaim called.
+    pub reclaim: u32,
+    /// Number of times vn_remove called.
+    pub remove: u32,
+    /// Number of times vn_free called.
+    pub free: u32,
+}
+
+pub struct BufStatistics {
+    pub get: u32,
+    pub create: u32,
+    pub get_locked: u32,
+    pub get_locked_waited: u32,
+    pub busy_locked: u32,
+    pub miss_locked: u32,
+    pub page_retries: u32,
+    pub page_found: u32,
+    pub get_read: u32,
+}
+
+pub struct ExtendedPrecisionCounters {
+    /// This is a count of bytes of file data flushed out by the XFS flushing daemons.
+    pub xstrat_bytes: u64,
+    /// This is a count of bytes written via write(2) system calls to files in XFS file systems. It can be used in conjunction with the write_calls count to calculate the average size of the write operations to files in XFS file systems.
+    pub write_bytes: u64,
+    /// This is a count of bytes read via read(2) system calls to files in XFS file systems. It can be used in conjunction with the read_calls count to calculate the average size of the read operations to files in XFS file systems.
+    pub read_bytes: u64,
+}
+
 pub fn parse(input: &[u8]) -> Option<XfsStat> {
     match xfs_stat(input) {
         nom::IResult::Done(_, stat) => Some(stat),
-        _ => None,
+        nom::IResult::Error(e) => {
+            println!("Error: {:?}", e); None
+        },
+        nom::IResult::Incomplete(i) => {
+            println!("i: {:?}", i); None
+        },
+        // _ => None,
     }
 }
 
@@ -389,7 +518,17 @@ named!(xfs_stat <XfsStat>,
     newline ~
     read_write_stats: rw ~
     newline ~
-    attribute_operations: attr,
+    attribute_operations: attr ~
+    newline ~
+    inode_clustering: icluster ~
+    newline ~
+    vnode_statistics: vnodes ~
+    newline ~
+    buf_statistics: buf ~
+    newline ~
+    extended_precision_counters: xpc ~
+    newline ~
+    dbg: debug,
     || {
       XfsStat {
         extent_allocation: extent_alloc,
@@ -404,9 +543,29 @@ named!(xfs_stat <XfsStat>,
         io_map_write_convert: io_map_write_convert,
         read_write_stats: read_write_stats,
         attribute_operations: attribute_operations,
+        inode_clustering: inode_clustering,
+        vnode_statistics: vnode_statistics,
+        buf_statistics: buf_statistics,
+        extended_precision_counters: extended_precision_counters,
+        debug: dbg,
       }
     }
   )
+);
+
+named!(debug <bool>,
+    chain!(
+        tag!("debug") ~
+        space ~
+        dbg: le_u8,
+        || {
+            if dbg == 1 {
+                true
+            } else {
+                false
+            }
+        }
+    )
 );
 
 named!(take_u32 <u32>,
@@ -419,6 +578,18 @@ named!(take_u32 <u32>,
     }
   )
 );
+
+named!(take_u64 <u64>,
+  chain!(
+    uint_slice: take_while!(is_digit) ~
+    opt!(space),
+    || {
+      let int_str = String::from_utf8_lossy(uint_slice);
+      u64::from_str(&int_str[..]).unwrap()
+    }
+  )
+);
+
 
 named!(extent_alloc <ExtentAllocation>,
   chain!(
@@ -659,6 +830,98 @@ named!(attr <AttributeOperations>,
                 set: set,
                 remove: remove,
                 list: list,
+            }
+        }
+    )
+);
+
+named!(icluster <InodeClustering>,
+    chain!(
+        tag!("icluster") ~
+        space ~
+        count: take_u32 ~
+        flushcnt: take_u32 ~
+        flushinode: take_u32,
+        || {
+            InodeClustering {
+                count: count,
+                flushcnt: flushcnt,
+                flushinode: flushinode,
+            }
+        }
+    )
+);
+
+named!(vnodes <VnodeStatistics>,
+    chain!(
+        tag!("vnodes") ~
+        space ~
+        active: take_u32 ~
+        alloc: take_u32 ~
+        get: take_u32 ~
+        hold: take_u32 ~
+        rele: take_u32 ~
+        reclaim: take_u32 ~
+        remove: take_u32 ~
+        free: take_u32,
+        || {
+            VnodeStatistics {
+                active: active,
+                alloc: alloc,
+                get: get,
+                hold: hold,
+                rele: rele,
+                reclaim: reclaim,
+                remove: remove,
+                free: free,
+            }
+
+        }
+    )
+);
+
+named!(buf <BufStatistics>,
+    chain!(
+        tag!("buf") ~
+        space ~
+        get: take_u32 ~
+        create: take_u32 ~
+        get_locked: take_u32 ~
+        get_locked_waited: take_u32 ~
+        busy_locked: take_u32 ~
+        miss_locked: take_u32 ~
+        page_retries: take_u32 ~
+        page_found: take_u32 ~
+        get_read: take_u32,
+        || {
+            BufStatistics {
+                get: get,
+                create: create,
+                get_locked: get_locked,
+                get_locked_waited: get_locked_waited,
+                busy_locked: busy_locked,
+                miss_locked: miss_locked,
+                page_retries: page_retries,
+                page_found: page_found,
+                get_read: get_read,
+            }
+
+        }
+    )
+);
+
+named!(xpc <ExtendedPrecisionCounters>,
+    chain!(
+        tag!("xpc") ~
+        space ~
+        xstrat_bytes: take_u64 ~
+        write_bytes: take_u64 ~
+        read_bytes: take_u64,
+        ||{
+            ExtendedPrecisionCounters {
+                xstrat_bytes: xstrat_bytes,
+                write_bytes: write_bytes,
+                read_bytes: read_bytes,
             }
         }
     )
