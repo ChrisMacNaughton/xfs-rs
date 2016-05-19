@@ -1,6 +1,6 @@
 [package]
 name = "xfs"
-version = "0.1.0"
+version = "0.2.0"
 authors = ["Chris MacNaughton <chmacnaughton@gmail.com>"]
 description = "A Parser for XFS performance data"
 license = "MIT/Apache-2.0"
