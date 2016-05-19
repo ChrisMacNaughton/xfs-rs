@@ -1,7 +1,7 @@
 # XFS
 
 [![Coveralls](https://img.shields.io/coveralls/ChrisMacNaughton/xfs-rs.svg?maxAge=2592000)](https://coveralls.io/github/ChrisMacNaughton/xfs-rs)
-[![Build](https://img.shields.io/travis-ci/ChrisMacNaughton/xfs-rs.svg)](https://travis-ci.org/ChrisMacNaughton/xfs-rs)<br />
+[![Build](https://img.shields.io/travis-ci/ChrisMacNaughton/xfs-rs/master.svg)](https://travis-ci.org/ChrisMacNaughton/xfs-rs)<br />
 [![Issues](https://img.shields.io/github/issues/ChrisMacNaughton/xfs-rs.svg)](https://github.com/ChrisMacNaughton/xfs-rs/issues)
 [![Crates.io](https://img.shields.io/crates/d/xfs.svg?maxAge=2592000)](https://crates.io/crates/xfs)
 [![Tags](https://img.shields.io/github/tag/ChrisMacNaughton/xfs-rs.svg)](https://github.com/ChrisMacNaughton/xfs-rs/tags)
