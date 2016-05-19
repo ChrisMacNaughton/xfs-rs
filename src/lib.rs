@@ -1,6 +1,6 @@
 #[macro_use] extern crate nom;
 
-use std::str::FromStr;
+use std::str::{self,FromStr};
 
 use self::nom::{is_digit, space, newline, digit};
 
@@ -125,12 +125,12 @@ named!(take_u32 <u32>,
 //                   map_res!(digit,
 //                            FromStr::from_str)));
 // named!(int_parse<u32>, map_res!(take_while_s!(is_digit), FromStr::from_str));
-named!(int_parse<&str, u32>, map_res!(digit, FromStr::from_str));
-named!(int_list<&str, Vec<u32> >, separated_list!(tag_s!(" ".as_bytes()), int_parse));
+named!(int_parse<u32>, map_res!(map_res!(digit, str::from_utf8), FromStr::from_str));
+named!(int_list<Vec<u32> >, separated_list!(char!(' '), int_parse));
 
 named!(extent_alloc <ExtentAllocation>,
   chain!(
-    tag_s!("extent_alloc") ~
+    tag!("extent_alloc") ~
     numbers: int_list,
     || {
       if numbers.len() != 4 {
