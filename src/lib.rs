@@ -17,6 +17,16 @@ mod tests {
             nom::IResult::Done(_, f) => assert_eq!(f, 12345u32),
             _ => unreachable!(),
         }
+    }
+
+    #[test]
+    fn it_parses_a_u32_with_whitespace() {
+        let input = b"12345 ";
+        let result = super::take_u32(input);
+        match result {
+            nom::IResult::Done(_, f) => assert_eq!(f, 12345u32),
+            _ => unreachable!(),
+        }
 
     }
 
@@ -99,11 +109,55 @@ mod tests {
     }
 
     #[test]
-    fn it_parseslog_operations() {
+    fn it_parses_log_operations() {
         let example_output = b"log 129491915 3992515264 458018 153771989 127040250";
         match super::log(example_output) {
             nom::IResult::Done(_, result) => {
                 assert_eq!(result.log_writes, 129491915);
+            }
+            _ => unreachable!(),
+        }
+    }
+
+    #[test]
+    fn it_parses_tail_pushing_stats() {
+        let example_output = b"push_ail 171473415 0 6896837 3324292 8069877 65884 1289485 0 22535 7337";
+        match super::push_ail(example_output) {
+            nom::IResult::Done(_, result) => {
+                assert_eq!(result.logspace, 171473415);
+            }
+            _ => unreachable!(),
+        }
+    }
+
+    #[test]
+    fn it_parses_io_map_write_convert() {
+        let example_output = b"xstrat 4140059 0";
+        match super::xstrat(example_output) {
+            nom::IResult::Done(_, result) => {
+                assert_eq!(result.quick, 4140059);
+            }
+            _ => unreachable!(),
+        }
+    }
+
+    #[test]
+    fn it_parses_read_write_stats() {
+        let example_output = b"rw 1595677950 1046884251";
+        match super::rw(example_output) {
+            nom::IResult::Done(_, result) => {
+                assert_eq!(result.write, 1595677950);
+            }
+            _ => unreachable!(),
+        }
+    }
+
+    #[test]
+    fn it_parses_attribute_operations() {
+        let example_output = b"attr 194724197 0 7 0";
+        match super::attr(example_output) {
+            nom::IResult::Done(_, result) => {
+                assert_eq!(result.get, 194724197);
             }
             _ => unreachable!(),
         }
@@ -147,6 +201,9 @@ pub struct XfsStat {
     pub inode_operations: InodeOperations,
     pub log_operations: LogOperations,
     pub tail_pushing_stats: TailPushingStats,
+    pub io_map_write_convert: IoMapWriteConvert,
+    pub read_write_stats: ReadWriteStats,
+    pub attribute_operations: AttributeOperations,
 }
 
 pub struct ExtentAllocation {
@@ -326,7 +383,13 @@ named!(xfs_stat <XfsStat>,
     newline ~
     log_operations: log ~
     newline ~
-    tail_pushing_stats: push_ail,
+    tail_pushing_stats: push_ail ~
+    newline ~
+    io_map_write_convert: xstrat ~
+    newline ~
+    read_write_stats: rw ~
+    newline ~
+    attribute_operations: attr,
     || {
       XfsStat {
         extent_allocation: extent_alloc,
@@ -338,6 +401,9 @@ named!(xfs_stat <XfsStat>,
         inode_operations: inode_operations,
         log_operations:log_operations,
         tail_pushing_stats: tail_pushing_stats,
+        io_map_write_convert: io_map_write_convert,
+        read_write_stats: read_write_stats,
+        attribute_operations: attribute_operations,
       }
     }
   )
@@ -345,7 +411,8 @@ named!(xfs_stat <XfsStat>,
 
 named!(take_u32 <u32>,
   chain!(
-    uint_slice: take_while!(is_digit),
+    uint_slice: take_while!(is_digit) ~
+    opt!(space),
     || {
       let int_str = String::from_utf8_lossy(uint_slice);
       u32::from_str(&int_str[..]).unwrap()
@@ -358,11 +425,8 @@ named!(extent_alloc <ExtentAllocation>,
     tag!("extent_alloc") ~
     space ~
     allocx: take_u32 ~
-    space ~
     allocb: take_u32 ~
-    space ~
     freex: take_u32 ~
-    space ~
     freeb: take_u32,
     || {
       ExtentAllocation {
@@ -380,11 +444,8 @@ named!(abt <AllocationBTree>,
     tag!("abt") ~
     space ~
     lookups: take_u32 ~
-    space ~
     compares: take_u32 ~
-    space ~
     inserts: take_u32 ~
-    space ~
     deletes: take_u32,
     || {
       AllocationBTree {
@@ -402,17 +463,11 @@ named!(blk_map <BlockMapping>,
     tag!("blk_map") ~
     space ~
     map_read: take_u32 ~
-    space ~
     map_write: take_u32 ~
-    space ~
     unmap: take_u32 ~
-    space ~
     list_insert: take_u32 ~
-    space ~
     list_delete: take_u32 ~
-    space ~
     list_lookup: take_u32 ~
-    space ~
     list_compare: take_u32,
     ||{
       BlockMapping {
@@ -433,11 +488,8 @@ named!(bmbt <BlockMapBTree>,
     tag!("bmbt") ~
     space ~
     lookup: take_u32 ~
-    space ~
     compare: take_u32 ~
-    space ~
     insrec: take_u32 ~
-    space ~
     delrec: take_u32,
     || {
       BlockMapBTree {
@@ -455,11 +507,8 @@ named!(dir <DirectoryOperations>,
         tag!("dir") ~
         space ~
         lookups: take_u32 ~
-        space ~
         creates: take_u32 ~
-        space ~
         removes: take_u32 ~
-        space ~
         get_dents: take_u32,
         || {
             DirectoryOperations {
@@ -477,9 +526,7 @@ named!(trans <Transactions>,
     tag!("trans") ~
     space ~
     waited: take_u32 ~
-    space ~
     async: take_u32 ~
-    space ~
     empty: take_u32,
     ||{
       Transactions {
@@ -496,17 +543,11 @@ named!(ig <InodeOperations>,
     tag!("ig") ~
     space ~
     cache_lookups: take_u32 ~
-    space ~
     cache_hits: take_u32 ~
-    space ~
     cache_recycle: take_u32 ~
-    space ~
     cache_missed: take_u32 ~
-    space ~
     cache_dup: take_u32 ~
-    space ~
     cache_reclaime: take_u32 ~
-    space ~
     inode_attr_changes: take_u32,
     || {
       InodeOperations {
@@ -527,13 +568,9 @@ named!(log <LogOperations>,
     tag!("log") ~
     space ~
     log_writes: take_u32 ~
-    space ~
     log_blocks: take_u32 ~
-    space ~
     noiclogs: take_u32 ~
-    space ~
     log_forced: take_u32 ~
-    space ~
     force_sleep: take_u32,
     || {
       LogOperations {
@@ -552,23 +589,14 @@ named!(push_ail <TailPushingStats>,
         tag!("push_ail") ~
         space ~
         logspace: take_u32 ~
-        space ~
         sleep_logspace: take_u32 ~
-        space ~
         push_ails: take_u32 ~
-        space ~
         push_ail_success: take_u32 ~
-        space ~
         push_ail_pushbuf: take_u32 ~
-        space ~
         push_ail_pinned: take_u32 ~
-        space ~
         push_ail_locked: take_u32 ~
-        space ~
         push_ail_flushing: take_u32 ~
-        space ~
         push_ail_restarts: take_u32 ~
-        space ~
         push_ail_flush: take_u32,
         || {
             TailPushingStats {
@@ -582,6 +610,55 @@ named!(push_ail <TailPushingStats>,
                 push_ail_flushing: push_ail_flushing,
                 push_ail_restarts: push_ail_restarts,
                 push_ail_flush: push_ail_flush,
+            }
+        }
+    )
+);
+
+named!(xstrat <IoMapWriteConvert>,
+    chain!(
+        tag!("xstrat") ~
+        space ~
+        quick: take_u32 ~
+        split: take_u32,
+        || {
+            IoMapWriteConvert {
+                quick: quick,
+                split: split,
+            }
+        }
+    )
+);
+
+named!(rw <ReadWriteStats>,
+    chain!(
+        tag!("rw") ~
+        space ~
+        write: take_u32 ~
+        read: take_u32,
+        || {
+            ReadWriteStats {
+                write: write,
+                read: read,
+            }
+        }
+    )
+);
+
+named!(attr <AttributeOperations>,
+    chain!(
+        tag!("attr") ~
+        space  ~
+        get: take_u32 ~
+        set: take_u32 ~
+        remove: take_u32 ~
+        list: take_u32,
+        || {
+            AttributeOperations {
+                get: get,
+                set: set,
+                remove: remove,
+                list: list,
             }
         }
     )
