@@ -2,6 +2,11 @@
 #[macro_use]
 extern crate nom;
 
+use std::error;
+use std::fmt;
+use std::fs::File;
+use std::io;
+use std::io::prelude::*;
 use std::str::FromStr;
 
 use self::nom::{le_u8, is_digit, space, newline};
@@ -255,7 +260,53 @@ debug 0";
         assert_eq!(result.inode_clustering.flushinode, 13909520);
         assert_eq!(result.vnode_statistics.free, 0);
         assert_eq!(result.buf_statistics.get_read, 809762);
-        assert_eq!(result.extended_precision_counters.read_bytes, 19760115252482u64);
+        assert_eq!(result.extended_precision_counters.read_bytes, 19760115252482);
+        assert_eq!(result.debug, false);
+    }
+
+    #[test]
+    fn it_parses_newer_version_with_extra_fields() {
+        let example_output = b"extent_alloc 0 0 0 0
+abt 0 0 0 0
+blk_map 0 0 0 0 0 0 0
+bmbt 0 0 0 0
+dir 0 0 0 0
+trans 0 0 0
+ig 0 0 0 0 0 0 0
+log 0 0 0 0 0
+push_ail 0 0 0 0 0 0 0 0 0 0
+xstrat 0 0
+rw 0 0
+attr 0 0 0 0
+icluster 0 0 0
+vnodes 0 0 0 0 0 0 0 0
+buf 0 0 0 0 0 0 0 0 0
+abtb2 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
+abtc2 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
+bmbt2 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
+ibt2 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
+fibt2 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
+qm 0 0 0 0 0 0 0 0
+xpc 0 0 0
+debug 0
+";
+        let result = super::parse(example_output).unwrap();
+        assert_eq!(result.extent_allocation.freed_extents, 0);
+        assert_eq!(result.allocation_btree.lookups, 0);
+        assert_eq!(result.block_mapping.unmap, 0);
+        assert_eq!(result.block_map_btree.inserts, 0);
+        assert_eq!(result.directory_operations.get_dents, 0);
+        assert_eq!(result.transactions.empty, 0);
+        assert_eq!(result.inode_operations.inode_attr_changes, 0);
+        assert_eq!(result.log_operations.force_sleep, 0);
+        assert_eq!(result.tail_pushing_stats.push_ail_flush, 0);
+        assert_eq!(result.io_map_write_convert.split, 0);
+        assert_eq!(result.read_write_stats.read, 0);
+        assert_eq!(result.attribute_operations.list, 0);
+        assert_eq!(result.inode_clustering.flushinode, 0);
+        assert_eq!(result.vnode_statistics.free, 0);
+        assert_eq!(result.buf_statistics.get_read, 0);
+        assert_eq!(result.extended_precision_counters.read_bytes, 0);
         assert_eq!(result.debug, false);
     }
 }
@@ -481,17 +532,81 @@ pub struct ExtendedPrecisionCounters {
     pub read_bytes: u64,
 }
 
-pub fn parse(input: &[u8]) -> Option<XfsStat> {
+#[derive(Debug)]
+pub enum XfsError {
+    /// We encounter an error reading from /proc/fs/xfs/stat
+    Io(io::Error),
+    /// We don't have enough information for a complete parse
+    Incomplete,
+    /// We encounter an error with the data wer're parsing
+    Parse,
+}
+
+impl fmt::Display for XfsError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match *self {
+            // Both underlying errors already impl `Display`, so we defer to
+            // their implementations.
+            XfsError::Io(ref err) => write!(f, "IO error: {}", err),
+            XfsError::Incomplete => write!(f, "Not enough data for XFS parse"),
+            XfsError::Parse => write!(f, "Parse error"),
+        }
+    }
+}
+
+impl error::Error for XfsError {
+    fn description(&self) -> &str {
+        // Both underlying errors already impl `Error`, so we defer to their
+        // implementations.
+        match *self {
+            XfsError::Io(ref err) => err.description(),
+            XfsError::Incomplete => "There is not enough data for parsing",
+            XfsError::Parse => "There was an error parsing",
+        }
+    }
+
+    fn cause(&self) -> Option<&error::Error> {
+        match *self {
+            // N.B. Both of these implicitly cast `err` from their concrete
+            // types (either `&io::Error` or `&num::ParseIntError`)
+            // to a trait object `&Error`. This works because both error types
+            // implement `Error`.
+            XfsError::Io(ref err) => Some(err),
+            XfsError::Incomplete => None,
+            XfsError::Parse => None,
+        }
+    }
+}
+
+impl From<io::Error> for XfsError {
+    fn from(err: io::Error) -> XfsError {
+        XfsError::Io(err)
+    }
+}
+
+pub fn parse(input: &[u8]) -> Result<XfsStat, XfsError> {
     match xfs_stat(input) {
-        nom::IResult::Done(_, stat) => Some(stat),
-        nom::IResult::Error(e) => {
-            println!("Error: {:?}", e); None
+        nom::IResult::Done(_, stat) => Ok(stat),
+        nom::IResult::Error(_) => {
+            Err(XfsError::Parse)
         },
-        nom::IResult::Incomplete(i) => {
-            println!("i: {:?}", i); None
+        nom::IResult::Incomplete(_) => {
+            Err(XfsError::Incomplete)
         },
         // _ => None,
     }
+}
+
+pub fn read() -> Result<String, XfsError> {
+    let mut f = try!(File::open("/proc/fs/xfs/stat"));
+    let mut s = String::new();
+    try!(f.read_to_string(&mut s));
+    Ok(s)
+}
+
+pub fn get() -> Result<XfsStat, XfsError> {
+    let contents = try!(read());
+    parse((&contents[..]).as_bytes())
 }
 
 named!(xfs_stat <XfsStat>,
@@ -912,6 +1027,7 @@ named!(buf <BufStatistics>,
 
 named!(xpc <ExtendedPrecisionCounters>,
     chain!(
+        take_until!("xpc") ~
         tag!("xpc") ~
         space ~
         xstrat_bytes: take_u64 ~
