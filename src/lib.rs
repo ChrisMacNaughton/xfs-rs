@@ -276,6 +276,31 @@ pub struct TailPushingStats {
     pub push_ail_flush: u32,
 }
 
+pub struct IoMapWriteConvert {
+    /// This is the number of buffers flushed out by the XFS flushing daemons which are written to contiguous space on disk. The buffers handled by the XFS daemons are delayed allocation buffers, so this count gives an indication of the success of the XFS daemons in allocating contiguous disk space for the data being flushed to disk.
+    pub quick: u32,
+    /// This is the number of buffers flushed out by the XFS flushing daemons which are written to non-contiguous space on disk. The buffers handled by the XFS daemons are delayed allocation buffers, so this count gives an indication of the failure of the XFS daemons in allocating contiguous disk space for the data being flushed to disk. Large values in this counter indicate that the file system has become fragmented.
+    pub split: u32,
+}
+
+pub struct ReadWriteStats {
+    /// This is the number of write(2) system calls made to files in XFS file systems.
+    pub write: u32,
+    /// This is the number of read(2) system calls made to files in XFS file systems.
+    pub read: u32,
+}
+
+pub struct AttributeOperations {
+    /// The number of "get" operations performed on extended file attributes within XFS filesystems. The "get" operation retrieves the value of an extended attribute.
+    pub get: u32,
+    /// The number of "set" operations performed on extended file attributes within XFS filesystems. The "set" operation creates and sets the value of an extended attribute.
+    pub set: u32,
+    /// The number of "remove" operations performed on extended file attributes within XFS filesystems. The "remove" operation deletes an extended attribute.
+    pub remove: u32,
+    /// The number of "list" operations performed on extended file attributes within XFS filesystems. The "list" operation retrieves the set of extended attributes associated with a file.
+    pub list: u32,
+}
+
 pub fn parse(input: &[u8]) -> Option<XfsStat> {
     match xfs_stat(input) {
         nom::IResult::Done(_, stat) => Some(stat),
